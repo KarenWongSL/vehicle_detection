@@ -1,39 +1,41 @@
 import streamlit as st
-import torch
-from torchvision import transforms
 from PIL import Image
+import cv2
+import numpy as np
+from ultralytics import YOLO
 
-# Load your trained model
-model = torch.load("my_model.pt", map_location="cpu")
-model.eval()
+# Load YOLOv8 model (replace 'yolov8n.pt' with your trained weights if any)
+model = YOLO("yolov8n.pt")  # Or your custom trained model, e.g., 'best.pt'
 
-# Define preprocessing
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406],
-                         [0.229, 0.224, 0.225])
-])
-
-st.title("Car Detection App")
-st.write("Upload an image and the app will detect if it is a car.")
+st.title("Car Detection App with YOLOv8")
+st.write("Upload an image and the app will detect cars.")
 
 uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
+    # Open the uploaded image
     image = Image.open(uploaded_file).convert("RGB")
     st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    # Preprocess the image
-    input_tensor = transform(image).unsqueeze(0)
+    # Convert PIL image to numpy array (OpenCV format)
+    image_np = np.array(image)
+    image_cv = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
 
-    # Run inference
-    with torch.no_grad():
-        output = model(input_tensor)
-        prediction = torch.argmax(output, dim=1).item()
+    # Run YOLOv8 inference
+    results = model.predict(source=image_cv, imgsz=640)
 
-    # Display result (assuming 1 = car, 0 = not car)
-    if prediction == 1:
-        st.success("This is a car!")
+    # Draw bounding boxes on the image
+    annotated_image = results[0].plot()  # Annotated image as numpy array
+    annotated_image = cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB)
+
+    # Display annotated image
+    st.image(annotated_image, caption="Detected Cars", use_column_width=True)
+
+    # Show detected classes
+    detected_classes = results[0].boxes.cls
+    class_names = [model.names[int(cls)] for cls in detected_classes]
+
+    if "car" in class_names:
+        st.success("Car detected!")
     else:
-        st.error("This is not a car.")
+        st.warning("No car detected.")
